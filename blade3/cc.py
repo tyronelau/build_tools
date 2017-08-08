@@ -98,8 +98,6 @@ class CCLibrary(rule.Rule):
     else:
       self.cxxflags = []
 
-    self.cxxflags.append("-m32")
-
     self.checkArguments("cxxflags", self.cxxflags)
 
     # TODO(liuyong): 这个检查没有生效, 因为 self.buildName 的值不对
