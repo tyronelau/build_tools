@@ -3,6 +3,7 @@
 
 __author__ = 'liuyong@agora.io(Yong Liu)'
 
+import subprocess
 import sys
 import os
 
@@ -97,6 +98,13 @@ class CCLibrary(rule.Rule):
       self.cxxflags = kwargs["cxxflags"]
     else:
       self.cxxflags = []
+
+    git = subprocess.Popen(["git", "describe", "--tags", "--always"],
+                           cwd="media_server_balancer", stdout=subprocess.PIPE)
+
+    version = git.stdout.read().strip()
+
+    self.cxxflags.append('-DGIT_DESC=\\\"%s\\"' %version)
 
     self.checkArguments("cxxflags", self.cxxflags)
 
@@ -470,9 +478,10 @@ class CCBinary(CCLibrary):
   def __init__(self, **kwargs):
     CCLibrary.__init__(self, **kwargs)
 
-    self.ldflags = []
     if "ldflags" in kwargs:
       self.ldflags = kwargs["ldflags"]
+
+    self.ldflags.append("-g")
 
     self.is_binary = 1
     self.is_library = 0
