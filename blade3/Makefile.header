@@ -1,0 +1,152 @@
+CC  = gcc
+CXX = g++
+
+DEBUG_CC  = gcc
+DEBUG_CXX = g++
+
+LLVM_DIR = build_tools/blade3
+LAYOUT_TOOL_DIR = build_tools/blade3/bin
+AR  = ar rcs
+
+CPPFLAGS  = -D__STDC_FORMAT_MACROS -DUSE_SYMBOLIZE -I.
+
+# COMPILE_FLAGS 设置的是对 C 和 C++ 都生效的那部分编译选项
+COMPILE_FLAGS  = -pthread -MMD -msse3 \
+            -fPIC -fstrict-aliasing \
+            -Wall -Wextra \
+            -Wtrigraphs \
+            -Wuninitialized \
+            -Wwrite-strings \
+            -Wpointer-arith \
+            -Wredundant-decls \
+            -Wno-unused-parameter \
+            -Wmissing-include-dirs  \
+            -Wno-missing-field-initializers
+
+WARN_AS_ERROR = -Werror
+
+CFLAGS    = -D_GNU_SOURCE ${COMPILE_FLAGS} -Werror-implicit-function-declaration
+
+# NOTE: 这里一定要用 c++0x
+CXXFLAGS  = ${COMPILE_FLAGS} -std=c++0x \
+						-Wvla \
+            -Wnon-virtual-dtor \
+            -Woverloaded-virtual \
+            -Wno-invalid-offsetof \
+            -Werror=non-virtual-dtor
+
+# 注意: linker 对库的顺序敏感，不要随意更改库的顺序
+LDFLAGS  = -pthread -ldl -lrt \
+
+# RELEASE_CFLAGS 和 RELEASE_CXXFLAGS, 分别针对 C 程序和 C++ 程序, 独立设置
+RELEASE_CC = ${CC}
+RELEASE_CXX = ${CXX}
+RELEASE_CPPFLAGS = ${CPPFLAGS} -DNDEBUG -DUSE_TCMALLOC=1
+RELEASE_CFLAGS = ${CFLAGS} -O3 -ggdb3 -Wformat=2 -Wstrict-aliasing=3 -fno-builtin-malloc -fno-builtin-calloc -fno-builtin-realloc -fno-builtin-free3 -Wframe-larger-than=65535 -fno-omit-frame-pointer
+RELEASE_CXXFLAGS = ${CXXFLAGS} -O3 -ggdb3 -Wformat=2 -Wstrict-aliasing=3 -fno-builtin-malloc -fno-builtin-calloc -fno-builtin-realloc -fno-builtin-free -Wframe-larger-than=65535 -fno-omit-frame-pointer
+# libunwind 一定要放在最后，libtcmalloc_and_profiler 一定要放在倒数第二
+RELEASE_LDFLAGS = ${LDFLAGS} -ltcmalloc_minimal
+
+# DEBUG_CFLAGS 和 DEBUG_CXXFLAGS, 分别针对 C 程序和 C++ 程序, 独立设置
+DEBUG_CC = ${CC}
+DEBUG_CXX = ${CXX}
+DEBUG_CPPFLAGS = ${CPPFLAGS} -DUSE_TCMALLOC=1 -D_GLIBCXX_DEBUG
+DEBUG_CFLAGS = ${CFLAGS} -ggdb3 -Wformat=2 -Wstrict-aliasing=3 -fno-inline -fno-omit-frame-pointer -fno-builtin -fno-optimize-sibling-calls -Wframe-larger-than=65535 -fno-omit-frame-pointer
+DEBUG_CXXFLAGS = ${CXXFLAGS} -ggdb3 -Wformat=2 -Wstrict-aliasing=3 -fno-inline -fno-omit-frame-pointer -fno-builtin -fno-optimize-sibling-calls -Wframe-larger-than=65535 -fno-omit-frame-pointer
+# libunwind 一定要放在最后，libtcmalloc_and_profiler 一定要放在倒数第二
+DEBUG_LDFLAGS = ${LDFLAGS} -ltcmalloc_minimal
+
+CPPLINT = python build_tools/lint/cpplint.py
+
+PRINT = build_tools/blade3/color_print.py green
+PRINT_WARNING = build_tools/blade3/color_print.py yellow
+PRINT_ERROR = build_tools/blade3/color_print.py red
+
+default: debug
+all: debug release
+test: debug_test
+all_test: debug_test release_test
+
+.PHONY: clean pre default all test all_test lint debug_test release_test test_until_die debug_test_until_die release_test_until_die
+
+pub:
+	@${PRINT_WARNING} "如何发布代码: 请严格按照下列步骤进行，否则极易遭受用户的鄙视"
+	@${PRINT} 
+	@${PRINT_WARNING} "1. 准备工作"
+	@${PRINT} "- 在源码根目录下运行 'svn up' 更新代码树，防止发布的代码和库，依赖了别人的旧代码"
+	@${PRINT} "- 在源码根目录下运行 'svn commit' 提交代码，保证待发布代码都已提交"
+	@${PRINT}
+	@${PRINT_WARNING} "2. 将待发布代码和库写入 pub 目录"
+	@${PRINT} "运行 'make copy_to_pub'，它将会自动完成下列工作:"
+	@${PRINT} "- 用 'make lint' 检查代码是否符合规范的底线"
+	@${PRINT} "- 编译并运行调试版和优化版的单元测试"
+	@${PRINT} "- 将需要发布的代码和库，拷贝到 pub 目录对应的子目录"
+	@${PRINT}
+	@${PRINT_WARNING} "3. 添加 pub 代码和库到 svn"
+	@${PRINT} "- 查看 pub 目录下新增文件：运行 'svn status ./pub' 即可，注意不要漏掉 .a 文件"
+	@${PRINT} "- 添加 pub 目录下新增文件：用 'svn add ...' 添加上面列出的文件到 svn 库"
+	@${PRINT} "- 一定不要漏文件，否则会导致用户编译失败"
+	@${PRINT}
+	@${PRINT_WARNING} "4. 删除 pub 下无用的文件"
+	@${PRINT} "- 查看 pub 目录下无用文件：运行 'make find_pub_unused'，找出源码目录下已删除，但曾经发布到 pub 目录下的文件"
+	@${PRINT} "- 删除 pub 目录下无用文件：用 'svn rm ...' 删除上面列出的文件"
+	@${PRINT} 
+	@${PRINT_WARNING} "5. 提交 pub 下新发布的包：用 'svn commit ./pub' 提交更改"
+
+pre: .build/pb/c++ .build/struct_check_log
+
+.build/pb/c++:
+	@mkdir -p .build/pb/c++
+
+.build/struct_check_log:
+	@if [ ! -x .build/struct_check_log ]; then mkdir -p .build/struct_check_log; fi
+
+%.h:
+	@[ ! -f $@ ] && ${PRINT} && ${PRINT_ERROR} ".h file not found: $@" && ${PRINT_ERROR} "try to run 'make clean' before running 'make' again." && ${PRINT} && false
+
+internal_debug_test_until_die:
+	test_until_die_pass=0; \
+  while true; \
+  do\
+    make debug_test; \
+    [ $$? -ne 0 ] && break; \
+    test_until_die_pass=`expr $$test_until_die_pass + 1`; \
+  done; \
+  ${PRINT} "stopped at pass $$test_until_die_pass"
+
+internal_release_test_until_die:
+	test_until_die_pass=0; \
+  while true; \
+  do \
+    make release_test; \
+    [ $$? -ne 0 ] && break; \
+    test_until_die_pass=`expr $$test_until_die_pass + 1`; \
+  done; \
+  ${PRINT} "stopped at pass $$test_until_die_pass"
+
+internal_test_until_die:
+	test_until_die_pass=0; \
+  while true; \
+  do \
+    make debug_test; \
+    [ $$? -ne 0 ] && break; \
+    make release_test; \
+    [ $$? -ne 0 ] && break; \
+    test_until_die_pass=`expr $$test_until_die_pass + 1`; \
+  done; \
+  ${PRINT} "stopped at pass $$test_until_die_pass"
+
+internal_no_test_defined:
+	@${PRINT_WARNING} 'No test defined in your BUILD files'
+
+check_list_file:
+	@if [ ! -f .blade/all_deps ]; then \
+	  ${PRINT_ERROR} "list file '.blade/all_deps' not found. please run gen_makefile.sh again to generate it."; \
+		exit 1; \
+	fi
+
+regen_makefile: check_list_file
+	@python build_tools/blade3/regen_makefile.py .blade/all_deps
+
+clean:
+	rm -rf .build
